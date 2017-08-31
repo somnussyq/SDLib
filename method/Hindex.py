@@ -18,33 +18,23 @@ class Hindex(SSDetection):
             sum += cnts[h]
         return 0
 
-
-    def buildModel(self):
-        # construction of the linkDict
-        #print self.sao.relation
-        #print '----------------------------------------'
-        print self.sao.followers
-        print '----------------------------------------'
-        #print self.sao.followees
-        #print '----------------------------------------'
-        #print self.sao.user
-        #print '----------------------------------------'
-
-        #out-degree
+    def cacuHOrder(self, data):
         before = -1
         after = 1
         i = -1
         whetherCode2 = True
         while before != after:
+            # h^0
             if i == -1:
                 self.h_0Dict = {}
                 before = 0
                 for user in self.sao.user:
-                    self.h_0Dict[user] = len(self.sao.getFollowers(user))
-                    before += len(self.sao.getFollowers(user))
-                print self.h_0Dict
+                    self.h_0Dict[user] = len(data(user))
+                    before += len(data(user))
+                print 'Hindex^ 0 :',self.h_0Dict
                 i += 1
             else:
+                # h^n
                 if whetherCode2 == False:
                     before = after
                 whetherCode2 = False
@@ -52,22 +42,36 @@ class Hindex(SSDetection):
                 after = 0
                 for user in self.sao.user:
                     neighborHList = []
-                    neighbor = self.sao.getFollowers(user).keys()
-                    for j in neighbor:
-                        neighborHList.append(self.h_0Dict[j])
-                    print neighborHList
+                    neighbor = data(user).keys()
+                    for tmp in neighbor:
+                        neighborHList.append(self.h_0Dict[tmp])
+                    #print neighborHList
                     hn = self.hIndex(neighborHList)
-                    print hn
+                    #print hn
                     self.h_nDict[user] = hn
                     after += hn
                 i += 1
-        print '------------------------'
-        print i
-        print self.h_nDict
-        print '----------------------------------'
+                print 'Hindex^', i, ':', self.h_nDict
+        return self.h_nDict
 
-        #in-degree
+    def buildModel(self):
+        # construction of the linkDict
+        #print self.sao.relation
+        #print '----------------------------------------'
+        #print self.sao.followers
+        #print '----------------------------------------'
+        # print self.sao.followees
+        # print '----------------------------------------'
+        #print self.sao.user
+        #print '----------------------------------------'
 
+        # followers
+        print 'followers'
+        self.cacuHOrder(self.sao.getFollowers)
+        print '********************************************************'
+        # followees
+        print 'followees'
+        self.cacuHOrder(self.sao.getFollowees)
 
 
 
