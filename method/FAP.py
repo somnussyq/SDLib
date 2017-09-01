@@ -26,7 +26,7 @@ class FAP(SDetection):
 
         # # predict top-k user as spammer
         self.k = int(self.config['topKSpam'])
-        kThreshlod = int(0.1 * (len(self.dao.user) - self.s))
+        kThreshlod = int(0.5 * (len(self.dao.user) - self.s))
         if self.k > kThreshlod:
             self.k = kThreshlod
             print '*** the number of top-K users is more than threshlod value, so it is set to', kThreshlod, '***'
