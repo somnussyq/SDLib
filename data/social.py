@@ -1,5 +1,5 @@
 import numpy as np
-#from structure import sparseMatrix,new_sparseMatrix
+from structure import sparseMatrix,new_sparseMatrix
 from tool.config import Config,LineConfig
 from tool.qmath import normalize
 import os.path
@@ -12,7 +12,7 @@ class SocialDAO(object):
         self.relation = relation
         self.followees = {}
         self.followers = {}
-        #self.trustMatrix = self.__generateSet()
+        self.trustMatrix = self.__generateSet()
 
     def __generateSet(self):
         #triple = []

@@ -131,8 +131,8 @@ class FAP(SDetection):
         # -------iterator-------
         PUserOld = []
         iterator = 0
-        while self.isConvergence(PUser, PUserOld):
-        #while iterator < 100:
+        #while self.isConvergence(PUser, PUserOld):
+        while iterator < 100:
             for j in self.seedUser:
                 PUser[j] = 1
             PUserOld = PUser
