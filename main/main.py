@@ -12,10 +12,13 @@ if __name__ == '__main__':
     print 'Supervised Methods:'
     print '1. DegreeSAD   2.CoDetector\n'
     print 'Semi-Supervised Methods:'
-    print '2. SemiSAD\n'
+    print '3. SemiSAD\n'
     print 'Unsupervised Methods:'
-    print '3. PCASelectUsers    4. FAP\n'
+    print '4. PCASelectUsers    5. FAP\n'
+    print 'Else Methods:'
+    print '6.HMD'
     print '-'*80
+
     algor = -1
     conf = -1
     order = input('please enter the num of the method to run it:')
@@ -44,6 +47,9 @@ if __name__ == '__main__':
 
     elif order == 5:
         conf = Config('../config/FAP.conf')
+
+    elif order == 6:
+        conf = Config('../config/HMD.conf')
 
     else:
         print 'Error num!'
