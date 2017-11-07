@@ -9,8 +9,16 @@ if __name__ == '__main__':
     print '='*80
     print '   SDLib: A Python library used to collect shilling detection methods.'
     print '='*80
-    print '1. DegreeSAD     2. PCASelectUsers     3. SemiSAD     4. FAP    5.Hindex'
+    print 'Supervised Methods:'
+    print '1. DegreeSAD   2.CoDetector\n'
+    print 'Semi-Supervised Methods:'
+    print '3. SemiSAD\n'
+    print 'Unsupervised Methods:'
+    print '4. PCASelectUsers    5. FAP\n'
+    print 'Else Methods:'
+    print '6.Hindex             7.HMD'
     print '-'*80
+
     algor = -1
     conf = -1
     order = input('please enter the num of the method to run it:')
@@ -27,17 +35,24 @@ if __name__ == '__main__':
     #     exit(0)
     if order == 1:
         conf = Config('../config/DegreeSAD.conf')
+
     elif order == 2:
-        conf = Config('../config/PCASelectUsers.conf')
+        conf = Config('../config/CoDetector.conf')
 
     elif order == 3:
         conf = Config('../config/SemiSAD.conf')
 
     elif order == 4:
-        conf = Config('../config/FAP.conf')
+        conf = Config('../config/PCASelectUsers.conf')
 
     elif order == 5:
+        conf = Config('../config/FAP.conf')
+
+    elif order == 6:
         conf = Config('../config/Hindex.conf')
+
+    elif order == 7:
+        conf = Config('../config/HMD.conf')
 
     else:
         print 'Error num!'
