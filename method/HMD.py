@@ -1,8 +1,13 @@
 # coding:UTF-8
+
 from baseclass.SDetection import SDetection
 from tool import config
 from random import choice,shuffle
+import numpy as np
+from tool.qmath import sigmoid
+from math import log
 import cPickle as pickle
+from sklearn.ensemble import RandomForestClassifier
 
 
 class HMD(SDetection):
@@ -16,6 +21,11 @@ class HMD(SDetection):
         self.walkDim = int(options['-l'])
         self.winSize = int(options['-w'])
         self.neighborNum = int(options['-N'])
+        self.epoch = int(options['-ep'])
+        self.rate = float(options['-r'])
+        self.neg = int(options['-neg'])
+        regular = config.LineConfig(self.config['reg.lambda'])
+        self.regU, self.regI = float(regular['-u']), float(regular['-i'])
 
 
     def printAlgorConfig(self):
@@ -100,44 +110,6 @@ class HMD(SDetection):
             self.OIP[pOrder] = i[0]
             pOrder += 1
 
-    #     # 保存字典到本地文件
-    #     saveM = file('../midData/MUD.pkl', 'wb')
-    #     pickle.dump(self.UOM, saveM, True)
-    #     pickle.dump(self.OUM, saveM, True)
-    #     saveM.close()
-    #
-    #     saveR = file('../midData/RUD.pkl', 'wb')
-    #     pickle.dump(self.UOR, saveR, True)
-    #     pickle.dump(self.OUR, saveR, True)
-    #     saveR.close()
-    #
-    #     saveQ = file('../midData/QUD.pkl', 'wb')
-    #     pickle.dump(self.UOQ, saveQ, True)
-    #     pickle.dump(self.OUQ, saveQ, True)
-    #     saveQ.close()
-    #
-    #     saveP = file('../midData/P.pkl', 'wb')
-    #     pickle.dump(self.IOP, saveP, True)
-    #     pickle.dump(self.OIP, saveP, True)
-    #     saveP.close()
-    #
-    #     # # 从本地文件中读取字典
-    #     # self.M = file('../midData/MUD.pkl', 'rb')
-    #     # self.MUO = pickle.load(self.M)
-    #     # self.MOU = pickle.load(self.M)
-    #     #
-    #     # self.R = file('../midData/RUD.pkl', 'rb')
-    #     # self.RUO = pickle.load(self.R)
-    #     # self.ROU = pickle.load(self.R)
-    #     #
-    #     # self.Q = file('../midData/QUD.pkl', 'rb')
-    #     # self.QUO = pickle.load(self.Q)
-    #     # self.QOU = pickle.load(self.Q)
-    #     #
-    #     # self.IP = file('../midData/P.pkl', 'rb')
-    #     # self.PIO = pickle.load(self.IP)
-    #     # self.POI = pickle.load(self.IP)
-
     # 构造一个ISU {item:{score:[user1,user2]}}字典
     def ISU(self):
         self.ISUDict = {}
@@ -157,12 +129,7 @@ class HMD(SDetection):
         return self.ISUDict
 
 
-    def pickNeighbor(self, user, featureFile):
-        # 从本地数据中读取feature()函数中保存的字典
-        feature = file(featureFile, 'rb')
-        UODict = pickle.load(feature)
-        OUDict = pickle.load(feature)
-
+    def pickNeighbor(self, user, UODict, OUDict):
         # 测试边界节点
         #self.testV = []
         # for i, order in UODict.items():
@@ -244,33 +211,33 @@ class HMD(SDetection):
     # 构造元路径并随机游走
     def mPath_rWalk(self):
         # U:user, M:MUD, Q:QUD, R:RUD, I:item, P:项目流行度, S:评分
-        p0 = 'UIU'
-        #p1 = 'UMM'
-        # p2 = 'UQQ'
-        # p3 = 'URR'
+        p1 = 'UIU'
+        p2 = 'UMM'
+        p3 = 'UQQ'
+        p4 = 'URR'
         # 找到与用户A评分项目a评分流行度相同的项目b，再找评过项目b的用户B
-        #p4 = 'UIPU'
-        # 找到与用户A对产品a评分相同的用户B
-        #p5 = 'US'
-        mPaths = [p0]
+        p5 = 'UIPU'
+        #找到与用户A对产品a评分相同的用户B
+        p6 = 'US'
+        mPaths = [p5,p6]
 
         print 'Generating random meta-path random walks...'
         self.walks = []
 
         for user in self.dao.user:
             for mp in mPaths:
-                if mp == p0:
-                    self.walkCount = 10
-                # if mp == p1:
-                #     self.walkCount = 10
-                # if mp == p2:
-                #     self.walkCount = 10
-                # if mp == p3:
-                #     self.walkCount = 10
-                # if mp == p4:
-                #     self.walkCount = 10
-                # if mp == p5:
-                #     self.walkCount = 10
+                if mp == p1:
+                    self.walkCount = 5
+                if mp == p2:
+                    self.walkCount = 5
+                if mp == p3:
+                    self.walkCount = 5
+                if mp == p4:
+                    self.walkCount = 5
+                if mp == p5:
+                    self.walkCount = 5
+                if mp == p6:
+                    self.walkCount = 5
 
                 for t in range(self.walkCount):
                     path = [(user, 'U')]
@@ -278,38 +245,32 @@ class HMD(SDetection):
                     nextNode = user
                     lastType = 'U'
 
-                    for i in range(self.walkLength / (len(mp)-1)):
+                    for i in range(self.walkLength / (len(mp[1:]))):
                         for tp in mp[1:]:
                             try:
-                                # if tp == 'M':
-                                #     nextNode = self.pickNeighbor(lastNode, '../midData/MUD.pkl')
-                                # if tp == 'Q':
-                                #     nextNode = self.pickNeighbor(lastNode, '../midData/QUD.pkl')
-                                # if tp == 'R':
-                                #     nextNode = self.pickNeighbor(lastNode, '../midData/RUD.pkl')
+                                if tp == 'M':
+                                    nextNode = self.pickNeighbor(lastNode, self.UOM, self.OUM)
+                                if tp == 'Q':
+                                    nextNode = self.pickNeighbor(lastNode, self.UOQ, self.OUQ)
+                                if tp == 'R':
+                                    nextNode = self.pickNeighbor(lastNode, self.UOR, self.OUR)
                                 if tp == 'I':
                                     # 从用户评过分的项目中随机选择一个
                                     nextNode = choice(self.dao.trainingSet_u[lastNode].keys())
-                                    #print nextNode
-                                # if tp == 'P':
-                                #     # 返回相似流行度的项目
-                                #     nextNode = self.pickNeighbor(lastNode, '../midData/P.pkl')
-                                    # try:
-                                    #     print nextNode, len(self.dao.trainingSet_i[nextNode].keys())
-                                    # except AttributeError:
-                                    #     pass
-                                    # print '-----------'
+                                if tp == 'P':
+                                    # 返回相似流行度的项目
+                                    nextNode = self.pickNeighbor(lastNode, self.IOP, self.OIP)
                                 if tp == 'U':
                                     # 找到评论过这个项目的用户
                                     nextNode = choice(self.dao.trainingSet_i[lastNode].keys())
-                                # if tp == 'S':
-                                #     # 随机选择用户评过分的项目
-                                #     item = choice(self.dao.trainingSet_u[lastNode].keys())
-                                #     # 记录这个项目的评分
-                                #     score = self.dao.trainingSet_u[lastNode][item]
-                                #     # 随机选择一个与该项目有相同评分的项目
-                                #     nextNode = choice(self.ISUDict[item][score])
-                                #     #### 如果没有相同评分的情况
+                                if tp == 'S':
+                                    # 随机选择用户评过分的项目
+                                    item = choice(self.dao.trainingSet_u[lastNode].keys())
+                                    # 记录这个项目的评分
+                                    score = self.dao.trainingSet_u[lastNode][item]
+                                    # 随机选择一个与该项目有相同评分的用户
+                                    nextNode = choice(self.ISUDict[item][score])
+                                    #### 如果没有相同评分的情况
 
                                 path.append((nextNode, tp))
                                 lastNode = nextNode
@@ -323,37 +284,161 @@ class HMD(SDetection):
         shuffle(self.walks)
         print 'walks:', len(self.walks)
 
-        j = 1
-        for i in self.walks:
-            print j
-            print i
-            print '.............'
-            j += 1
+    def predictRating(self, user, item):
+        u = self.dao.all_User[user]
+        i = self.dao.all_Item[item]
+        return self.W[u].dot(self.G[i])
 
-        print self.walks[31000]
+    def skipGram(self):
+        self.W = np.random.rand(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 10  # user
+        self.G = np.random.rand(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 10  # item
 
+        iteration = 1
+        userList = self.dao.user.keys()
+        itemList = self.dao.item.keys()
 
-    # def skip-gram
+        while iteration <= self.epoch:
+            self.loss = 0
+            self.rLoss = 0
+            self.wLoss = 0
+
+            # Rating MF
+            self.dao.ratings = dict(self.dao.trainingSet_u, **self.dao.testSet_u)
+            for user in self.dao.ratings:
+                for item in self.dao.ratings[user]:
+                    rating = self.dao.ratings[user][item]
+                    error = rating - self.predictRating(user, item)
+                    u = self.dao.all_User[user]
+                    i = self.dao.all_Item[item]
+                    p = self.W[u]
+                    q = self.G[i]
+                    self.rLoss += error**2
+                    self.loss += self.rLoss
+
+                    # update latent vectors
+                    self.W[u] += self.rate * (error * q - self.regU * p)
+                    self.G[i] += self.rate * (error * p - self.regI * q)
+
+            for walk in self.walks:
+                # i:从1开始的序号; node:路径中的每个节点
+                for i, node in enumerate(walk):
+                    #滑动窗口中的邻居
+                    neighbors = walk[max(0, i - self.winSize / 2): min(len(walk) - 1, i + self.winSize / 2 )]
+                    # center:(user/item)id; ctp:nodeType
+                    center, ctp = walk[i]
+                    if ctp == 'I' or ctp == 'P': #Item
+                        centerVec = self.G[self.dao.all_Item[center]]
+                    else: #User
+                        centerVec = self.W[self.dao.all_User[center]]
+
+                    for entity, tp in neighbors:
+                        currentVec = ''
+                        if tp == 'U' or tp == 'M' or tp == 'Q' or tp == 'R' or tp == 'S' and center <> entity:
+                            currentVec = self.W[self.dao.all_User[entity]]
+                            self.W[self.dao.all_User[entity]] +=  self.rate * (
+                                1 - sigmoid(currentVec.dot(centerVec))) * centerVec
+                            if ctp == 'U' or ctp == 'M' or ctp == 'Q' or ctp == 'R' or ctp == 'S':
+                                self.W[self.dao.all_User[center]] +=  self.rate * (
+                                    1 - sigmoid(currentVec.dot(centerVec))) * currentVec
+                            else:
+                                self.G[self.dao.all_Item[center]] += self.rate * (
+                                    1 - sigmoid(currentVec.dot(centerVec))) * currentVec
+
+                            self.wLoss += - log(sigmoid(currentVec.dot(centerVec)))
+                            self.loss += self.wLoss
+
+                            for i in range(self.neg):
+                                sample = choice(userList)
+                                while sample == entity:
+                                    sample = choice(userList)
+                                sampleVec = self.W[self.dao.all_User[sample]]
+                                self.W[self.dao.all_User[sample]] -=  self.rate * (
+                                    1 - sigmoid(-sampleVec.dot(centerVec))) * centerVec
+                                if ctp == 'U' or ctp == 'M' or ctp == 'Q' or ctp == 'R' or ctp == 'S':
+                                    self.W[self.dao.all_User[center]] -=  self.rate * (
+                                        1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
+                                else:
+                                    self.G[self.dao.all_Item[center]] -= self.rate * (
+                                        1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
+
+                        elif tp == 'I' or tp =='P' and center <> entity:
+                            currentVec = self.G[self.dao.all_Item[entity]]
+                            self.G[self.dao.all_Item[entity]] += self.rate * (
+                                1 - sigmoid(currentVec.dot(centerVec))) * centerVec
+                            if ctp == 'U' or ctp == 'M' or ctp == 'Q' or ctp == 'R' or ctp == 'S':
+                                self.W[self.dao.all_User[center]] +=  self.rate * (
+                                    1 - sigmoid(currentVec.dot(centerVec))) * currentVec
+                            else:
+                                self.G[self.dao.all_Item[center]] += self.rate * (
+                                    1 - sigmoid(currentVec.dot(centerVec))) * currentVec
+
+                            self.wLoss += -  log(sigmoid(currentVec.dot(centerVec)))
+                            self.loss += self.wLoss
+
+                            for i in range(self.neg):
+                                sample = choice(itemList)
+                                while sample == entity:
+                                    sample = choice(itemList)
+                                sampleVec = self.G[self.dao.all_Item[sample]]
+                                self.G[self.dao.all_Item[sample]] -= self.rate * (
+                                    1 - sigmoid(-currentVec.dot(centerVec))) * centerVec
+                                if ctp == 'U' or ctp == 'M' or ctp == 'Q' or ctp == 'R' or ctp == 'S':
+                                    self.W[self.dao.all_User[center]] -= self.rate * (
+                                        1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
+                                else:
+                                    self.G[self.dao.all_Item[center]] -= self.rate * (
+                                        1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
+            shuffle(self.walks)
+            print 'iteration:', iteration, 'loss:', self.loss, 'rLoss', self.rLoss, 'wLoss', self.wLoss
+            iteration += 1
+
+        print 'User embedding generated.'
+
+        # # 保存到本地文件
+        userVectors = open('HMD-Amazon-userVec' + self.foldInfo + '.pkl', 'wb')
+        itemVectors = open('HMD-Amazon-itemVec' + self.foldInfo + '.pkl', 'wb')
+        pickle.dump(self.W, userVectors)
+        pickle.dump(self.G, itemVectors)
+        userVectors.close()
+        itemVectors.close()
+        return self.W
+
 
     def initModel(self):
-        #feature = self.feature()
-
-        #print self.dao.trainingSet_i['B004U97PSW'].keys()
+        self.feature()
         self.ISU()
-        walk = self.mPath_rWalk()
+        self.mPath_rWalk()
+        # 训练用户嵌入向量
+        print 'Generating user embedding...'
+        #self.W = np.random.rand(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 10  # user
+        #self.G = np.random.rand(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 10  # item
+        self.skipGram()
 
-        #self.testV=['B004HFQM0Q', 'B004FLK6VS', 'B0084Y23KE', 'B003JQJZSU', 'B006LXC4N6', 'B0031QOI80', 'B00798MM5C', 'B001494OBM', 'B005X3DVIW', 'B002KKBWK0']
 
-        #item = self.pickNeighbor('B001N2LUQM', '../midData/P.pkl')
-        #for test in self.testV:
-        #    item = self.pickNeighbor(test, '../midData/P.pkl')
-        # for item, userRate in self.dao.trainingSet_i.items():
-        #     print item, 'pickNeighbor:', self.pickNeighbor(item, '../midData/P.pkl')
+    def buildModel(self):
+        # {userID：userOrder} ---> {userOrder:userID}
+        # userOrder = dict((v, k) for k, v in self.dao.all_User.iteritems())
 
-    # def buildModel(self):
-    #     sList = sorted(self.dao.trainingSet_i.iteritems(), key=lambda d: len(d[1]), reverse=True)
-    #     print sList
+        # # 加载嵌入向量
+        pkl_user = open('HMD-Amazon-userVec' + self.foldInfo + '.pkl', 'rb')
+        userVec = pickle.load(pkl_user)
 
+        # 训练数据
+        for user in self.dao.trainingSet_u:
+            self.training.append(userVec[self.dao.all_User[user]])
+            self.trainingLabels.append(self.labels[user])
+
+        # 测试数据
+        for user in self.dao.testSet_u:
+            self.test.append(userVec[self.dao.all_User[user]])
+            self.testLabels.append(self.labels[user])
+
+
+    def predict(self):
+        clfRF = RandomForestClassifier(n_estimators=8)
+        clfRF.fit(self.training, self.trainingLabels)
+        pred_labels = clfRF.predict(self.test)
+        return pred_labels
 
     ###   代码需要优化的内容
     #     1. 没有评分的用户
