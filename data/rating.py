@@ -17,7 +17,7 @@ class RatingDAO(object):
         self.id2user = {}
         self.id2item = {}
         self.all_Item = {}
-        self.all_User = {}
+        self.all_User = {} #used to store the order of users both in the training set and test set
         self.userMeans = {} #used to store the mean values of users's ratings
         self.itemMeans = {} #used to store the mean values of items's ratings
 
@@ -52,7 +52,6 @@ class RatingDAO(object):
 
         for i,user in enumerate(self.trainingData):
             for item in self.trainingData[user]:
-
                 # makes the rating within the range [0, 1].
                 #rating = normalize(float(rating), self.rScale[-1], self.rScale[0])
                 #self.trainingSet_u[userName][itemName] = float(rating)
@@ -73,10 +72,9 @@ class RatingDAO(object):
         self.all_User.update(self.user)
         self.all_Item.update(self.item)
         for i, user in enumerate(self.testData):
+            if not self.user.has_key(user):
+                self.all_User[user] = len(self.all_User)
             for item in self.testData[user]:
-                # order the user
-                if not self.user.has_key(user):
-                    self.all_User[user] = len(self.all_User)
                 # order the item
                 if not self.item.has_key(item):
                     self.all_Item[item] = len(self.all_Item)

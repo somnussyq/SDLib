@@ -1,7 +1,8 @@
 ##coding:utf-8
+
 from baseclass.SSDetection import SSDetection
 from data.social import SocialDAO
-from tool.config import Config,LineConfig
+from tool import config
 from tool.file import FileIO
 import copy
 import math
@@ -14,10 +15,14 @@ class Hindex(SSDetection):
 
     def readConfiguration(self):
         super(Hindex, self).readConfiguration()
+        # 注入攻击前的用户关系
         userRelation = FileIO.loadRelationship(self.config, self.config['shillingBefore'])
         self.fao = SocialDAO(self.config, userRelation)
 
+        options = config.LineConfig(self.config['Hindex'])
+        self.ratio = float(options['-r'])
 
+    # 计算Hindex
     def hIndex(self, citations):
         #print citations
         N = len(citations)
@@ -34,10 +39,13 @@ class Hindex(SSDetection):
             sum += cnts[h]
         return 0
 
+    # 计算N阶Hindex
+    # 高阶Hindex收敛时即为核数 coreness
+    # 返回用户的Coreness
     def cacuHOrder(self, data, dataSource, order=float('inf')):
         # data: follower or followee
-        # dataSource: 用户数据源，即self.fao.user 或 self.sao.user
-        # order: H-index的阶数, float('inf')
+        # dataSource: 用户数据源，即self.fao.user //攻击前用户关系  或 self.sao.user// 攻击后用户关系
+        # order: H-index的阶数, float('inf') // float('inf')表示无穷
         before = -1
         after = 1
         i = -1
@@ -85,14 +93,15 @@ class Hindex(SSDetection):
             print self.hIndexDictList[-1]
             return self.hIndexDictList[-1]
 
-
-    def cacuChanges(self, shillingData, data, sortStyle=True ):
+    #计算用户核数的变化量
+    def cacuChanges(self, shillingData, data, sortStyle):
         # shillingData 攻击后的数据
         # data 攻击前的数据
         hChanges = {}
         #crossEntropy = {}
         for i in shillingData:
             #print i
+            after = shillingData[i]
             after = shillingData[i]
             #print after
             before = data.get(i, 0)
@@ -127,71 +136,77 @@ class Hindex(SSDetection):
         #print self.labels
 
         # followers before shilling attack
-        print  '-------------------------------------------'
-        print 'followers before shilling attack'
+        print 'the coreness of user\'s followers before shilling attack'
         followerHindex = self.cacuHOrder(self.fao.getFollowers, self.fao.user, )
-        print sorted(followerHindex.items(), key=lambda i: i[1], reverse=True)
-        print '·················································'
+        # print sorted(followerHindex.items(), key=lambda i: i[1], reverse=True)
+
         # followees before shilling attack
-        print 'followees before shilling attack'
+        print 'the coreness of user\'s followees before shilling attack'
         followeeHindex = self.cacuHOrder(self.fao.getFollowees, self.fao.user, )
-        print sorted(followerHindex.items(), key=lambda i: i[1], reverse=True)
+        #print sorted(followerHindex.items(), key=lambda i: i[1], reverse=True)
 
         # followers after shilling attack
-        print '********************************************************'
-        print 'followers'
+        print 'the coreness of user\'s followers after shilling attack '
         shillingFollowerHindex = self.cacuHOrder(self.sao.getFollowers, self.sao.user, )
-        print sorted(shillingFollowerHindex.items(), key=lambda i: i[1], reverse=True)
-        print '·················································'
+        #print sorted(shillingFollowerHindex.items(), key=lambda i: i[1], reverse=True)
+
         # followees after shilling attack
-        print 'followees'
+        print 'the coreness of user\'s followees after shilling attack'
         shillingFolloweeHindex = self.cacuHOrder(self.sao.getFollowees, self.sao.user, )
-        print sorted(shillingFolloweeHindex.items(), key=lambda i: i[1], reverse=True)
+        #print sorted(shillingFolloweeHindex.items(), key=lambda i: i[1], reverse=True)
 
 
         # compare the changes of followers
-        print '********************************************************'
-        self.followerChanges = self.cacuChanges(shillingFollowerHindex, followerHindex)
-        print '·················································'
+        print 'the changes of followers'
+        self.followerChanges = self.cacuChanges(shillingFollowerHindex, followerHindex, True)
+
         # compare the changes of followees
-        self.followeeChanges = self.cacuChanges(shillingFolloweeHindex, followeeHindex)
+        print 'the changes of followees·················································'
+        self.followeeChanges = self.cacuChanges(shillingFolloweeHindex, followeeHindex, True)
         #print followerChanges
         #print followeeChanges
 
+        # 建立特征矩阵
+        # userID，评分，changesFellowerCoreness，changesFelloweeCoreness
+
+
     def predict(self):
-        self.predLabels = np.zeros(len(self.labels))
-        spamList = []
-        i = 0
-        while i < 0.05 * len(self.labels):
-            spam = self.followerChanges[i][0]
-            #print self.followerChanges[i]
-            #self.predLabels[int(spam)-1] = 1
-            self.predLabels[self.sao.user.get(spam)] = 1
-            #print self.predLabels
-            i += 1
-        # for j in self.predLabels:
-        #     print j
-        # print len(self.labels),self.labels
-        print len(self.predLabels), sum(self.predLabels), self.predLabels,
-        # print self.dao.trainingSet_u
+        # ##无监督方法##
+        #
+        # # 正常用户的入度有变化（followee）
+        # # 虚假用户的出度变化较大（follower）
+        # self.predLabels = np.zeros(len(self.labels))
+        # spamList = []
+        #
+        # # 虚假用户是followee与follower共同变化量最大的N个
+        # #虚假用户是followee或follower变化量最大的N个
+        # i = 0
+        # while i < self.ratio * len(self.labels):
+        #     spam = self.followeeChanges[i][0]
+        #     self.predLabels[self.sao.user.get(spam)] = 1
+        #     i += 1
+        # print len(self.predLabels), sum(self.predLabels), self.predLabels,
+        #
+        # # trueLabels
+        # tot = 0
+        # for tmp in self.labels:
+        #     tot += int(self.labels.get(tmp))
+        # print tot
+        # #self.testLabels = np.zeros(len(self.labels))
+        # self.testLabels = []
+        # for j in range(0, len(self.labels)):
+        #     self.testLabels.append(0)
+        # for i in self.labels:
+        #     # print i
+        #     # print self.sao.user.get(i, len(self.sao.user)+1)
+        #     #print int(self.labels.get(i))
+        #     # self.testLabels[int(i) - 1] = self.labels.get(i)
+        #     label = int(self.labels.get(i))
+        #     self.testLabels[self.sao.user.get(i, len(self.sao.user)+1)] = label
+        # print len(self.testLabels), sum(self.testLabels), self.testLabels
+        # return self.predLabels
 
-        # trueLabels
-        tot = 0
-        for tmp in self.labels:
-            tot += int(self.labels.get(tmp))
-        print tot
-        #self.testLabels = np.zeros(len(self.labels))
-        self.testLabels = []
-        for j in range(0, len(self.labels)):
-            self.testLabels.append(0)
-        for i in self.labels:
-            # print i
-            # print self.sao.user.get(i, len(self.sao.user)+1)
-            #print int(self.labels.get(i))
-            # self.testLabels[int(i) - 1] = self.labels.get(i)
-            label = int(self.labels.get(i))
+    # 有监督的方法
 
-            self.testLabels[self.sao.user.get(i, len(self.sao.user)+1)] = label
 
-        print len(self.testLabels), sum(self.testLabels), self.testLabels
-        return self.predLabels
+# hindex的阶数不同，对检测结果有什么影响

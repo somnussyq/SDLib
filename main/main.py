@@ -16,7 +16,7 @@ if __name__ == '__main__':
     print 'Unsupervised Methods:'
     print '4. PCASelectUsers    5. FAP\n'
     print 'Else Methods:'
-    print '6.Hindex             7.HMD'
+    print '6.Hindex   7.HMD    8.NetSpam'
     print '-'*80
 
     algor = -1
@@ -53,6 +53,9 @@ if __name__ == '__main__':
 
     elif order == 7:
         conf = Config('../config/HMD.conf')
+
+    elif order == 8:
+        conf = Config('../config/NetSpam.conf')
 
     else:
         print 'Error num!'

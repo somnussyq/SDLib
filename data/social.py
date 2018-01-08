@@ -1,5 +1,5 @@
 import numpy as np
-from structure import sparseMatrix,new_sparseMatrix
+#from structure import sparseMatrix,new_sparseMatrix
 from tool.config import Config,LineConfig
 from tool.qmath import normalize
 import os.path

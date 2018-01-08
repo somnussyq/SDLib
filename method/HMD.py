@@ -7,7 +7,10 @@ import numpy as np
 from tool.qmath import sigmoid
 from math import log
 import cPickle as pickle
+import random
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
 
 
 class HMD(SDetection):
@@ -19,13 +22,15 @@ class HMD(SDetection):
         options = config.LineConfig(self.config['HMD'])
         self.walkLength = int(options['-L'])
         self.walkDim = int(options['-l'])
+        self.walkCount = int(options['-c'])
         self.winSize = int(options['-w'])
         self.neighborNum = int(options['-N'])
         self.epoch = int(options['-ep'])
         self.rate = float(options['-r'])
         self.neg = int(options['-neg'])
         regular = config.LineConfig(self.config['reg.lambda'])
-        self.regU, self.regI = float(regular['-u']), float(regular['-i'])
+        self.regU, self.regI, self.regR, self.regW = float(regular['-u']), float(regular['-i']),\
+                                                     float(regular['-R']), float(regular['-W'])
 
 
     def printAlgorConfig(self):
@@ -62,17 +67,20 @@ class HMD(SDetection):
         # {Order:Item}
         self.OIP = {}
 
-        for user in self.dao.trainingSet_u:
+        self.dao.u = dict(self.dao.trainingSet_u, **self.dao.testSet_u)
+        self.dao.i = dict(self.dao.trainingSet_i, **self.dao.testSet_i)
+
+        for user in self.dao.u:
             self.MUD[user] = 0
-            for item in self.dao.trainingSet_u[user]:
+            for item in self.dao.u[user]:
                 # 每个用户评分项目的流行度之和
-                self.MUD[user] += len(self.dao.trainingSet_i[item])
-                self.P[item] = len(self.dao.trainingSet_i[item])
-            self.MUD[user]/float(len(self.dao.trainingSet_u[user]))
+                self.MUD[user] += len(self.dao.i[item])
+                self.P[item] = len(self.dao.i[item])
+            self.MUD[user]/float(len(self.dao.u[user]))
 
 
             # 用户流行度list
-            lengthList = [len(self.dao.trainingSet_i[item]) for item in self.dao.trainingSet_u[user]]
+            lengthList = [len(self.dao.i[item]) for item in self.dao.u[user]]
             lengthList.sort(reverse=True)
             self.RUD[user] = lengthList[0] - lengthList[-1]
             self.QUD[user] = lengthList[int((len(lengthList) - 1) / 4.0)]
@@ -114,7 +122,7 @@ class HMD(SDetection):
     def ISU(self):
         self.ISUDict = {}
         # 遍历字典中的键值对
-        for item, userS in self.dao.trainingSet_i.items():
+        for item, userS in self.dao.i.items():
             scoreUDict = {}
             for user, score in userS.items():
                 # 当某评分已经出现时
@@ -215,7 +223,7 @@ class HMD(SDetection):
         p2 = 'UMM'
         p3 = 'UQQ'
         p4 = 'URR'
-        # 找到与用户A评分项目a评分流行度相同的项目b，再找评过项目b的用户B
+        # # 找到与用户A评分项目a评分流行度相同的项目b，再找评过项目b的用户B
         p5 = 'UIPU'
         #找到与用户A对产品a评分相同的用户B
         p6 = 'US'
@@ -224,20 +232,20 @@ class HMD(SDetection):
         print 'Generating random meta-path random walks...'
         self.walks = []
 
-        for user in self.dao.user:
+        for user in self.dao.all_User:
             for mp in mPaths:
-                if mp == p1:
-                    self.walkCount = 5
-                if mp == p2:
-                    self.walkCount = 5
-                if mp == p3:
-                    self.walkCount = 5
-                if mp == p4:
-                    self.walkCount = 5
-                if mp == p5:
-                    self.walkCount = 5
-                if mp == p6:
-                    self.walkCount = 5
+            #     if mp == p1:
+            #         self.walkCount = 10
+            #     if mp == p2:
+            #         self.walkCount = 5
+            #     if mp == p3:
+            #         self.walkCount = 5
+            #     if mp == p4:
+            #         self.walkCount = 5
+            #     if mp == p5:
+            #         self.walkCount = 5
+            #     if mp == p6:
+            #         self.walkCount = 5
 
                 for t in range(self.walkCount):
                     path = [(user, 'U')]
@@ -263,6 +271,7 @@ class HMD(SDetection):
                                 if tp == 'U':
                                     # 找到评论过这个项目的用户
                                     nextNode = choice(self.dao.trainingSet_i[lastNode].keys())
+
                                 if tp == 'S':
                                     # 随机选择用户评过分的项目
                                     item = choice(self.dao.trainingSet_u[lastNode].keys())
@@ -290,34 +299,21 @@ class HMD(SDetection):
         return self.W[u].dot(self.G[i])
 
     def skipGram(self):
-        self.W = np.random.rand(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 10  # user
-        self.G = np.random.rand(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 10  # item
+        # 随机高斯分布
+        self.W = (np.random.randn(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim)+1)/2 /100 # user
+        self.G = (np.random.randn(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim)+1)/2 /100 # item
 
+        # #随机均匀分布
+        # self.W = np.random.randn(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 200
+        # self.G = np.random.randn(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 200
         iteration = 1
-        userList = self.dao.user.keys()
-        itemList = self.dao.item.keys()
+        userList = self.dao.u.keys()
+        itemList = self.dao.i.keys()
 
         while iteration <= self.epoch:
             self.loss = 0
             self.rLoss = 0
             self.wLoss = 0
-
-            # Rating MF
-            self.dao.ratings = dict(self.dao.trainingSet_u, **self.dao.testSet_u)
-            for user in self.dao.ratings:
-                for item in self.dao.ratings[user]:
-                    rating = self.dao.ratings[user][item]
-                    error = rating - self.predictRating(user, item)
-                    u = self.dao.all_User[user]
-                    i = self.dao.all_Item[item]
-                    p = self.W[u]
-                    q = self.G[i]
-                    self.rLoss += error**2
-                    self.loss += self.rLoss
-
-                    # update latent vectors
-                    self.W[u] += self.rate * (error * q - self.regU * p)
-                    self.G[i] += self.rate * (error * p - self.regI * q)
 
             for walk in self.walks:
                 # i:从1开始的序号; node:路径中的每个节点
@@ -345,7 +341,7 @@ class HMD(SDetection):
                                     1 - sigmoid(currentVec.dot(centerVec))) * currentVec
 
                             self.wLoss += - log(sigmoid(currentVec.dot(centerVec)))
-                            self.loss += self.wLoss
+                            self.loss += - self.regW * log(sigmoid(currentVec.dot(centerVec)))
 
                             for i in range(self.neg):
                                 sample = choice(userList)
@@ -372,8 +368,8 @@ class HMD(SDetection):
                                 self.G[self.dao.all_Item[center]] += self.rate * (
                                     1 - sigmoid(currentVec.dot(centerVec))) * currentVec
 
-                            self.wLoss += -  log(sigmoid(currentVec.dot(centerVec)))
-                            self.loss += self.wLoss
+                            self.wLoss += - log(sigmoid(currentVec.dot(centerVec)))
+                            self.loss += - self.regW * log(sigmoid(currentVec.dot(centerVec)))
 
                             for i in range(self.neg):
                                 sample = choice(itemList)
@@ -388,15 +384,40 @@ class HMD(SDetection):
                                 else:
                                     self.G[self.dao.all_Item[center]] -= self.rate * (
                                         1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
+
+                    # 随机选择一条评分进行分解
+                    randUser = self.userOrder[random.randint(0, len(self.dao.all_User)-1)]
+                    randItemList = []
+                    for i in self.dao.u[randUser].keys():
+                        randItemList.append(i)
+                    randItem = randItemList[random.randint(0, len(randItemList)-1)]
+                    randRating = self.dao.u[randUser][randItem]
+
+                    error = randRating - self.predictRating(randUser, randItem)
+                    u = self.dao.all_User[randUser]
+                    i = self.dao.all_Item[randItem]
+                    p = self.W[u]
+                    q = self.G[i]
+                    self.rLoss += error**2
+                    self.loss += self.regR * error**2
+
+                    # update latent vectors
+                    self.W[u] += self.rate * (error * q - self.regU * p)
+                    self.G[i] += self.rate * (error * p - self.regI * q)
+
+
             shuffle(self.walks)
             print 'iteration:', iteration, 'loss:', self.loss, 'rLoss', self.rLoss, 'wLoss', self.wLoss
             iteration += 1
 
+
         print 'User embedding generated.'
 
         # # 保存到本地文件
-        userVectors = open('HMD-Amazon-userVec' + self.foldInfo + '.pkl', 'wb')
-        itemVectors = open('HMD-Amazon-itemVec' + self.foldInfo + '.pkl', 'wb')
+        # userVectors = open('HMD-Amazon-userVec-p56' + self.foldInfo + '.pkl', 'wb')
+        # itemVectors = open('HMD-Amazon-itemVec-p56' + self.foldInfo + '.pkl', 'wb')
+        userVectors = open('HMD-Yelp-userVec-p56' + self.foldInfo + '.pkl', 'wb')
+        itemVectors = open('HMD-Yelp-itemVec-p56' + self.foldInfo + '.pkl', 'wb')
         pickle.dump(self.W, userVectors)
         pickle.dump(self.G, itemVectors)
         userVectors.close()
@@ -408,19 +429,22 @@ class HMD(SDetection):
         self.feature()
         self.ISU()
         self.mPath_rWalk()
-        # 训练用户嵌入向量
+        # # 训练用户嵌入向量
         print 'Generating user embedding...'
         #self.W = np.random.rand(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 10  # user
         #self.G = np.random.rand(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 10  # item
+
+        # {userID：userOrder} ---> {userOrder:userID}
+        self.userOrder = dict((v, k) for k, v in self.dao.all_User.iteritems())
         self.skipGram()
 
 
     def buildModel(self):
-        # {userID：userOrder} ---> {userOrder:userID}
-        # userOrder = dict((v, k) for k, v in self.dao.all_User.iteritems())
+
 
         # # 加载嵌入向量
-        pkl_user = open('HMD-Amazon-userVec' + self.foldInfo + '.pkl', 'rb')
+        #pkl_user = open('HMD-Amazon-userVec-p56' + self.foldInfo + '.pkl', 'rb')
+        pkl_user = open('HMD-Yelp-userVec-p56' + self.foldInfo + '.pkl', 'rb')
         userVec = pickle.load(pkl_user)
 
         # 训练数据
@@ -435,9 +459,15 @@ class HMD(SDetection):
 
 
     def predict(self):
-        clfRF = RandomForestClassifier(n_estimators=8)
+        clfRF = RandomForestClassifier(n_estimators=10)
         clfRF.fit(self.training, self.trainingLabels)
         pred_labels = clfRF.predict(self.test)
+        # clfGBDT = GradientBoostingClassifier(n_estimators=10)
+        # clfGBDT.fit(self.training, self.trainingLabels)
+        # pred_labels = clfGBDT.predict(self.test)
+        # clfDT = DecisionTreeClassifier(criterion='entropy')
+        # clfDT.fit(self.training, self.trainingLabels)
+        # pred_labels = clfDT.predict(self.test)
         return pred_labels
 
     ###   代码需要优化的内容

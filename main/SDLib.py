@@ -9,6 +9,7 @@ from time import strftime,localtime,time
 import re
 import numpy as np
 from os.path import abspath
+
 class SDLib(object):
     def __init__(self,config):
         self.trainingData = []  # training data
