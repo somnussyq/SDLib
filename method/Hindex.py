@@ -7,6 +7,8 @@ from tool.file import FileIO
 import copy
 import math
 import numpy as np
+from sklearn.tree import DecisionTreeClassifier
+
 
 class Hindex(SSDetection):
     def __init__(self, conf, trainingSet=None, testSet=None, label=None, relation=list(), fold='[1]'):
@@ -22,7 +24,17 @@ class Hindex(SSDetection):
         options = config.LineConfig(self.config['Hindex'])
         self.ratio = float(options['-r'])
 
+
+
+    # 数据说明
+    #self.fao: 原数据集用户关系
+    #self.sao: 攻击之后用户关系
+    #self.dao.user: 训练集{用户id：用户序号}
+    #self.dao.all_user: 训练+测试集{用户id：用户序号}
+
     # 计算Hindex
+    # citations 在Hindex里表示引用关系
+    # 在此处表示用户的邻居
     def hIndex(self, citations):
         #print citations
         N = len(citations)
@@ -42,10 +54,9 @@ class Hindex(SSDetection):
     # 计算N阶Hindex
     # 高阶Hindex收敛时即为核数 coreness
     # 返回用户的Coreness
-    def cacuHOrder(self, data, dataSource, order=float('inf')):
-        # data: follower or followee
-        # dataSource: 用户数据源，即self.fao.user //攻击前用户关系  或 self.sao.user// 攻击后用户关系
-        # order: H-index的阶数, float('inf') // float('inf')表示无穷
+    def cacuHOrder(self, data, order):
+        # data: 用字典存储用户的邻居信息：follower or followee // self.fao.getFollowers、self.fao.getFollowees
+        # order: H-index的阶数:N~float('inf') // float('inf')表示无穷
         before = -1
         after = 1
         i = -1
@@ -55,13 +66,14 @@ class Hindex(SSDetection):
             if i == -1:
                 self.h_0Dict = {}
                 before = 0
-                for user in dataSource:
-                    #print user, dataSource(user)
+                for user in self.dao.all_User:
                     self.h_0Dict[user] = len(data(user))
                     before += len(data(user))
                 #print 'Hindex^ 0 :', self.h_0Dict
                 self.hIndexDictList.append(self.h_0Dict)
+                #print self.hIndexDictList
                 i += 1
+
             # 计算N阶Hindex
             else:
                 # h^n
@@ -70,7 +82,7 @@ class Hindex(SSDetection):
                     self.h_nDict = copy.deepcopy(self.h_iDict)
                 self.h_iDict = {}
                 after = 0
-                for user in dataSource:
+                for user in self.dao.all_User:
                     neighborHList = []
                     neighbor = data(user).keys()
                     for tmp in neighbor:
@@ -86,18 +98,22 @@ class Hindex(SSDetection):
                 i += 1
                 #print 'Hindex^', i, ':', self.h_iDict
                 self.hIndexDictList.append(self.h_iDict)
+
+        # 返回用户核数字典
         if order < i:
-            print self.hIndexDictList[order]
+            #print self.hIndexDictList[order]
             return self.hIndexDictList[order]
         else:
-            print self.hIndexDictList[-1]
+            #print self.hIndexDictList[-1]
             return self.hIndexDictList[-1]
 
     #计算用户核数的变化量
-    def cacuChanges(self, shillingData, data, sortStyle):
+    def cacuChanges(self, shillingData, data):
         # shillingData 攻击后的数据
         # data 攻击前的数据
+        # sortType 排序方式 // 根据是否需要排序返回加此参数
         hChanges = {}
+        # 计算交叉熵
         #crossEntropy = {}
         for i in shillingData:
             #print i
@@ -115,59 +131,70 @@ class Hindex(SSDetection):
             #print change
             #print '---------------------------'
             hChanges[i] = change
-        print sorted(hChanges.items(), key=lambda i: i[1], reverse=sortStyle)
-        #print sorted(crossEntropy.items(), key=lambda i: i[1], reverse=True)
-        return sorted(hChanges.items(), key=lambda i: i[1], reverse=sortStyle)
+        #print hChanges
+        return hChanges
+        # print sorted(hChanges.items(), key=lambda i: i[1] reverse=sortType)
+        # #print sorted(crossEntropy.items(), key=lambda i: i[1], reverse=True)
+        # return sorted(hChanges.items(), key=lambda i: i[1] reverse=sortType)
 
 
     def buildModel(self):
-        # print self.sao.relation
-        # print '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'
-        # construction of the linkDict
-        #print self.sao.relation
-        #print '----------------------------------------'
-        #print self.sao.followers
-        #print '----------------------------------------'
-        # print self.sao.followees
-        # print '----------------------------------------'
-        #print self.sao.user
-        #print self.dao.user
-        #print '----------------------------------------'
-        #print self.labels
-
+        #print 'trainingSet'
         # followers before shilling attack
-        print 'the coreness of user\'s followers before shilling attack'
-        followerHindex = self.cacuHOrder(self.fao.getFollowers, self.fao.user, )
-        # print sorted(followerHindex.items(), key=lambda i: i[1], reverse=True)
+        #print 'the coreness of user\'s followers before shilling attack'
+        #followerHindex0 = self.cacuHOrder(self.fao.getFollowers,float('inf'))
+        followerHindex = self.cacuHOrder(self.fao.getFollowers, 0)
+        # self.followerChanges = self.cacuChanges(followerHindex0, followerHindex)
+        # print self.followerChanges
+
 
         # followees before shilling attack
-        print 'the coreness of user\'s followees before shilling attack'
-        followeeHindex = self.cacuHOrder(self.fao.getFollowees, self.fao.user, )
-        #print sorted(followerHindex.items(), key=lambda i: i[1], reverse=True)
+        #print 'the coreness of user\'s followees before shilling attack'
+        followeeHindex = self.cacuHOrder(self.fao.getFollowees, 0)
+        #print followeeHindex
 
-        # followers after shilling attack
-        print 'the coreness of user\'s followers after shilling attack '
-        shillingFollowerHindex = self.cacuHOrder(self.sao.getFollowers, self.sao.user, )
-        #print sorted(shillingFollowerHindex.items(), key=lambda i: i[1], reverse=True)
+        # # followers after shilling attack
+        #print 'the coreness of user\'s followers after shilling attack '
+        shillingFollowerHindex = self.cacuHOrder(self.sao.getFollowers, 0)
 
-        # followees after shilling attack
-        print 'the coreness of user\'s followees after shilling attack'
-        shillingFolloweeHindex = self.cacuHOrder(self.sao.getFollowees, self.sao.user, )
-        #print sorted(shillingFolloweeHindex.items(), key=lambda i: i[1], reverse=True)
+        # # followees after shilling attack
+        #print 'the coreness of user\'s followees after shilling attack'
+        shillingFolloweeHindex = self.cacuHOrder(self.sao.getFollowees, 0)
+        # #print sorted(shillingFolloweeHindex.items(), key=lambda i: i[1], reverse=True)
 
+        # # compare the changes of followers
+        #print 'the changes of followers'
+        self.followerChanges = self.cacuChanges(shillingFollowerHindex, followerHindex)
+        #print self.followerChanges
 
-        # compare the changes of followers
-        print 'the changes of followers'
-        self.followerChanges = self.cacuChanges(shillingFollowerHindex, followerHindex, True)
-
-        # compare the changes of followees
-        print 'the changes of followees·················································'
-        self.followeeChanges = self.cacuChanges(shillingFolloweeHindex, followeeHindex, True)
-        #print followerChanges
-        #print followeeChanges
+        # # compare the changes of followees
+        #print 'the changes of followees '
+        self.followeeChanges = self.cacuChanges(shillingFolloweeHindex, followeeHindex)
+        #print self.followeeChanges
+        # #print followerChanges
+        # #print followeeChanges
 
         # 建立特征矩阵
         # userID，评分，changesFellowerCoreness，changesFelloweeCoreness
+        #for user in self.dao.trainingSet_u:
+
+
+        # print len(self.fao.user)
+        # print len(self.dao.user)
+        # print len(self.sao.user)
+
+        # preparing examples
+        for user in self.dao.trainingSet_u:
+            self.training.append([followerHindex[user], followeeHindex[user],
+                                  shillingFollowerHindex[user], shillingFolloweeHindex[user],
+                                  self.followerChanges[user], self.followeeChanges[user]])
+            self.trainingLabels.append(self.labels[user])
+
+        for user in self.dao.testSet_u:
+            self.test.append([followerHindex[user], followeeHindex[user],
+                                  shillingFollowerHindex[user], shillingFolloweeHindex[user],
+                                  self.followerChanges[user], self.followeeChanges[user]])
+            self.testLabels.append(self.labels[user])
 
 
     def predict(self):
@@ -206,7 +233,13 @@ class Hindex(SSDetection):
         # print len(self.testLabels), sum(self.testLabels), self.testLabels
         # return self.predLabels
 
-    # 有监督的方法
+        # 有监督的方法
+        classifier = DecisionTreeClassifier(criterion='entropy')
+        classifier.fit(self.training, self.trainingLabels)
+        pred_labels = classifier.predict(self.test)
+        print 'Decision Tree:'
+        return pred_labels
+
 
 
 # hindex的阶数不同，对检测结果有什么影响
