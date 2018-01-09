@@ -137,6 +137,19 @@ class HMD(SDetection):
             self.ISUDict[item] = scoreUDict
         return self.ISUDict
 
+    # 全局平均分字典 {item:meanRating} -->self.dao.itemMeans
+    # 用户平均分字典 {user：meanRating} -->self.dao.userMeans
+    # 平均分分为N级，建立分级字典{1级:{item1},... N级:{item}}
+
+    # 全局流行度字典 {item：ratingCount}
+    # 用户流行度字典 {user：ratingCount}
+    # 流行度分为M级，建立分级字典{1级:{item},...M级:{item}}
+
+    #路径：user1-item1-item流行度级数-同级item2-给item2评过分的user2
+    #路径：user1-item1-itemMean-itemMean级数-同级item2-给item2评过分的user2
+    #路径：user1-userMean-userMean级数-同级userMean-user2
+    #路径：user1-ratingCont-ratingCount级数-同级userCount-user2
+
 
     def pickNeighbor(self, user, UODict, OUDict):
         # 测试边界节点
@@ -217,6 +230,7 @@ class HMD(SDetection):
         return neighbor
 
 
+
     # 构造元路径并随机游走
     def mPath_rWalk(self):
         # U:user, M:MUD, Q:QUD, R:RUD, I:item, P:项目流行度, S:评分
@@ -228,25 +242,25 @@ class HMD(SDetection):
         p5 = 'UIPU'
         #找到与用户A对产品a评分相同的用户B
         p6 = 'US'
-        mPaths = [p2]
+        mPaths = [p1,p5,p6]
 
         print 'Generating random meta-path random walks...'
         self.walks = []
 
         for user in self.dao.all_User:
             for mp in mPaths:
-                if mp == p1:
-                    self.walkCount = 10
-                if mp == p2:
-                    self.walkCount = 5
-                if mp == p3:
-                    self.walkCount = 5
-                if mp == p4:
-                    self.walkCount = 5
-                if mp == p5:
-                    self.walkCount = 5
-                if mp == p6:
-                    self.walkCount = 5
+            #     if mp == p1:
+            #         self.walkCount = 10
+            #     if mp == p2:
+            #         self.walkCount = 5
+            #     if mp == p3:
+            #         self.walkCount = 5
+            #     if mp == p4:
+            #         self.walkCount = 5
+            #     if mp == p5:
+            #         self.walkCount = 10
+            #     if mp == p6:
+            #         self.walkCount = 10
 
                 for t in range(self.walkCount):
                     path = ['U'+user]
@@ -306,7 +320,28 @@ class HMD(SDetection):
         self.W = np.random.rand(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 200
         self.G = np.random.rand(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 200
 
-        model = w2v.Word2Vec(self.walks, size=10, window=6, min_count=0, iter=3)
+        # print 'training the rating matrix'
+        # iteration = 1
+        # while iteration <= self.epoch:
+        #     self.loss = 0
+        #
+        #     # # Rating MF
+        #     for user in self.dao.u:
+        #         for item in self.dao.u[user]:
+        #             rating = self.dao.u[user][item]
+        #             error = rating - self.predictRating(user, item)
+        #             u = self.dao.all_User[user]
+        #             i = self.dao.all_Item[item]
+        #             p = self.W[u]
+        #             q = self.G[i]
+        #             self.loss += self.regR * error ** 2
+        #
+        #             # update latent vectors
+        #             self.W[u] += self.rate * (error * q - self.regU * p)
+        #             self.G[i] += self.rate * (error * p - self.regI * q)
+
+        print 'Generating user embedding...'
+        model = w2v.Word2Vec(self.walks, size=self.walkDim, window=6, min_count=0, iter=3)
 
         errorNumber = 0
         for user in self.dao.all_User:
@@ -314,11 +349,15 @@ class HMD(SDetection):
             try:
                 self.W[uid]= model.wv['U'+user]
             except (KeyError):
-                self.W[uid]= np.random.randn(1,10)
+                self.W[uid]= np.random.randn(1,self.walkDim)
                 errorNumber += 1
+
+
 
         print 'errorNumber',errorNumber
         print 'User embedding generated.'
+
+
         return self.W
 
 
@@ -327,7 +366,7 @@ class HMD(SDetection):
         self.ISU()
         self.mPath_rWalk()
         # # 训练用户嵌入向量
-        print 'Generating user embedding...'
+
 
 
         # {userID：userOrder} ---> {userOrder:userID}
