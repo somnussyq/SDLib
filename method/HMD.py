@@ -11,6 +11,7 @@ import random
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
+import gensim.models.word2vec as w2v
 
 
 class HMD(SDetection):
@@ -227,33 +228,33 @@ class HMD(SDetection):
         p5 = 'UIPU'
         #找到与用户A对产品a评分相同的用户B
         p6 = 'US'
-        mPaths = [p5,p6]
+        mPaths = [p2]
 
         print 'Generating random meta-path random walks...'
         self.walks = []
 
         for user in self.dao.all_User:
             for mp in mPaths:
-            #     if mp == p1:
-            #         self.walkCount = 10
-            #     if mp == p2:
-            #         self.walkCount = 5
-            #     if mp == p3:
-            #         self.walkCount = 5
-            #     if mp == p4:
-            #         self.walkCount = 5
-            #     if mp == p5:
-            #         self.walkCount = 5
-            #     if mp == p6:
-            #         self.walkCount = 5
+                if mp == p1:
+                    self.walkCount = 10
+                if mp == p2:
+                    self.walkCount = 5
+                if mp == p3:
+                    self.walkCount = 5
+                if mp == p4:
+                    self.walkCount = 5
+                if mp == p5:
+                    self.walkCount = 5
+                if mp == p6:
+                    self.walkCount = 5
 
                 for t in range(self.walkCount):
-                    path = [(user, 'U')]
+                    path = ['U'+user]
                     lastNode = user
                     nextNode = user
                     lastType = 'U'
 
-                    for i in range(self.walkLength / (len(mp[1:]))):
+                    for i in range(self.walkLength / len(mp[1:])):
                         for tp in mp[1:]:
                             try:
                                 if tp == 'M':
@@ -281,7 +282,7 @@ class HMD(SDetection):
                                     nextNode = choice(self.ISUDict[item][score])
                                     #### 如果没有相同评分的情况
 
-                                path.append((nextNode, tp))
+                                path.append(tp+nextNode)
                                 lastNode = nextNode
                                 lastType = tp
 
@@ -300,128 +301,24 @@ class HMD(SDetection):
 
     def skipGram(self):
         # 随机高斯分布
-        self.W = (np.random.randn(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim)+1)/2 /100 # user
-        self.G = (np.random.randn(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim)+1)/2 /100 # item
+        # self.W = (np.random.randn(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim)+1)/2 /100 # user
+        # self.G = (np.random.randn(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim)+1)/2 /100 # item
+        self.W = np.random.rand(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 200
+        self.G = np.random.rand(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 200
 
-        # #随机均匀分布
-        # self.W = np.random.randn(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 200
-        # self.G = np.random.randn(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 200
-        iteration = 1
-        userList = self.dao.u.keys()
-        itemList = self.dao.i.keys()
+        model = w2v.Word2Vec(self.walks, size=10, window=6, min_count=0, iter=3)
 
-        while iteration <= self.epoch:
-            self.loss = 0
-            self.rLoss = 0
-            self.wLoss = 0
+        errorNumber = 0
+        for user in self.dao.all_User:
+            uid =self.dao.all_User[user]
+            try:
+                self.W[uid]= model.wv['U'+user]
+            except (KeyError):
+                self.W[uid]= np.random.randn(1,10)
+                errorNumber += 1
 
-            for walk in self.walks:
-                # i:从1开始的序号; node:路径中的每个节点
-                for i, node in enumerate(walk):
-                    #滑动窗口中的邻居
-                    neighbors = walk[max(0, i - self.winSize / 2): min(len(walk) - 1, i + self.winSize / 2 )]
-                    # center:(user/item)id; ctp:nodeType
-                    center, ctp = walk[i]
-                    if ctp == 'I' or ctp == 'P': #Item
-                        centerVec = self.G[self.dao.all_Item[center]]
-                    else: #User
-                        centerVec = self.W[self.dao.all_User[center]]
-
-                    for entity, tp in neighbors:
-                        currentVec = ''
-                        if tp == 'U' or tp == 'M' or tp == 'Q' or tp == 'R' or tp == 'S' and center <> entity:
-                            currentVec = self.W[self.dao.all_User[entity]]
-                            self.W[self.dao.all_User[entity]] +=  self.rate * (
-                                1 - sigmoid(currentVec.dot(centerVec))) * centerVec
-                            if ctp == 'U' or ctp == 'M' or ctp == 'Q' or ctp == 'R' or ctp == 'S':
-                                self.W[self.dao.all_User[center]] +=  self.rate * (
-                                    1 - sigmoid(currentVec.dot(centerVec))) * currentVec
-                            else:
-                                self.G[self.dao.all_Item[center]] += self.rate * (
-                                    1 - sigmoid(currentVec.dot(centerVec))) * currentVec
-
-                            self.wLoss += - log(sigmoid(currentVec.dot(centerVec)))
-                            self.loss += - self.regW * log(sigmoid(currentVec.dot(centerVec)))
-
-                            for i in range(self.neg):
-                                sample = choice(userList)
-                                while sample == entity:
-                                    sample = choice(userList)
-                                sampleVec = self.W[self.dao.all_User[sample]]
-                                self.W[self.dao.all_User[sample]] -=  self.rate * (
-                                    1 - sigmoid(-sampleVec.dot(centerVec))) * centerVec
-                                if ctp == 'U' or ctp == 'M' or ctp == 'Q' or ctp == 'R' or ctp == 'S':
-                                    self.W[self.dao.all_User[center]] -=  self.rate * (
-                                        1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
-                                else:
-                                    self.G[self.dao.all_Item[center]] -= self.rate * (
-                                        1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
-
-                        elif tp == 'I' or tp =='P' and center <> entity:
-                            currentVec = self.G[self.dao.all_Item[entity]]
-                            self.G[self.dao.all_Item[entity]] += self.rate * (
-                                1 - sigmoid(currentVec.dot(centerVec))) * centerVec
-                            if ctp == 'U' or ctp == 'M' or ctp == 'Q' or ctp == 'R' or ctp == 'S':
-                                self.W[self.dao.all_User[center]] +=  self.rate * (
-                                    1 - sigmoid(currentVec.dot(centerVec))) * currentVec
-                            else:
-                                self.G[self.dao.all_Item[center]] += self.rate * (
-                                    1 - sigmoid(currentVec.dot(centerVec))) * currentVec
-
-                            self.wLoss += - log(sigmoid(currentVec.dot(centerVec)))
-                            self.loss += - self.regW * log(sigmoid(currentVec.dot(centerVec)))
-
-                            for i in range(self.neg):
-                                sample = choice(itemList)
-                                while sample == entity:
-                                    sample = choice(itemList)
-                                sampleVec = self.G[self.dao.all_Item[sample]]
-                                self.G[self.dao.all_Item[sample]] -= self.rate * (
-                                    1 - sigmoid(-currentVec.dot(centerVec))) * centerVec
-                                if ctp == 'U' or ctp == 'M' or ctp == 'Q' or ctp == 'R' or ctp == 'S':
-                                    self.W[self.dao.all_User[center]] -= self.rate * (
-                                        1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
-                                else:
-                                    self.G[self.dao.all_Item[center]] -= self.rate * (
-                                        1 - sigmoid(-sampleVec.dot(centerVec))) * sampleVec
-
-                    # 随机选择一条评分进行分解
-                    randUser = self.userOrder[random.randint(0, len(self.dao.all_User)-1)]
-                    randItemList = []
-                    for i in self.dao.u[randUser].keys():
-                        randItemList.append(i)
-                    randItem = randItemList[random.randint(0, len(randItemList)-1)]
-                    randRating = self.dao.u[randUser][randItem]
-
-                    error = randRating - self.predictRating(randUser, randItem)
-                    u = self.dao.all_User[randUser]
-                    i = self.dao.all_Item[randItem]
-                    p = self.W[u]
-                    q = self.G[i]
-                    self.rLoss += error**2
-                    self.loss += self.regR * error**2
-
-                    # update latent vectors
-                    self.W[u] += self.rate * (error * q - self.regU * p)
-                    self.G[i] += self.rate * (error * p - self.regI * q)
-
-
-            shuffle(self.walks)
-            print 'iteration:', iteration, 'loss:', self.loss, 'rLoss', self.rLoss, 'wLoss', self.wLoss
-            iteration += 1
-
-
+        print 'errorNumber',errorNumber
         print 'User embedding generated.'
-
-        # # 保存到本地文件
-        # userVectors = open('HMD-Amazon-userVec-p56' + self.foldInfo + '.pkl', 'wb')
-        # itemVectors = open('HMD-Amazon-itemVec-p56' + self.foldInfo + '.pkl', 'wb')
-        userVectors = open('HMD-Yelp-userVec-p56' + self.foldInfo + '.pkl', 'wb')
-        itemVectors = open('HMD-Yelp-itemVec-p56' + self.foldInfo + '.pkl', 'wb')
-        pickle.dump(self.W, userVectors)
-        pickle.dump(self.G, itemVectors)
-        userVectors.close()
-        itemVectors.close()
         return self.W
 
 
@@ -431,8 +328,7 @@ class HMD(SDetection):
         self.mPath_rWalk()
         # # 训练用户嵌入向量
         print 'Generating user embedding...'
-        #self.W = np.random.rand(self.dao.trainingSize()[0] + self.dao.testSize()[0], self.walkDim) / 10  # user
-        #self.G = np.random.rand(self.dao.trainingSize()[1] + self.dao.testSize()[1], self.walkDim) / 10  # item
+
 
         # {userID：userOrder} ---> {userOrder:userID}
         self.userOrder = dict((v, k) for k, v in self.dao.all_User.iteritems())
@@ -440,21 +336,14 @@ class HMD(SDetection):
 
 
     def buildModel(self):
-
-
-        # # 加载嵌入向量
-        #pkl_user = open('HMD-Amazon-userVec-p56' + self.foldInfo + '.pkl', 'rb')
-        pkl_user = open('HMD-Yelp-userVec-p56' + self.foldInfo + '.pkl', 'rb')
-        userVec = pickle.load(pkl_user)
-
         # 训练数据
         for user in self.dao.trainingSet_u:
-            self.training.append(userVec[self.dao.all_User[user]])
+            self.training.append(self.W[self.dao.all_User[user]])
             self.trainingLabels.append(self.labels[user])
 
         # 测试数据
         for user in self.dao.testSet_u:
-            self.test.append(userVec[self.dao.all_User[user]])
+            self.test.append(self.W[self.dao.all_User[user]])
             self.testLabels.append(self.labels[user])
 
 
@@ -473,3 +362,5 @@ class HMD(SDetection):
     ###   代码需要优化的内容
     #     1. 没有评分的用户
     #     2. 一个用户的item邻居很少？怎么处理？
+    #     3. 异构的路径还需要仔细斟酌！
+    #     4. 生成的向量直接放到分类器？是否还有其他方式？
