@@ -8,6 +8,7 @@ import copy
 import math
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 
 class Hindex(SSDetection):
@@ -143,33 +144,37 @@ class Hindex(SSDetection):
         # followers before shilling attack
         #print 'the coreness of user\'s followers before shilling attack'
         #followerHindex0 = self.cacuHOrder(self.fao.getFollowers,float('inf'))
-        followerHindex = self.cacuHOrder(self.fao.getFollowers, 0)
+        #followerHindex = self.cacuHOrder(self.fao.getFollowers, 0)
         # self.followerChanges = self.cacuChanges(followerHindex0, followerHindex)
         # print self.followerChanges
 
 
         # followees before shilling attack
         #print 'the coreness of user\'s followees before shilling attack'
-        followeeHindex = self.cacuHOrder(self.fao.getFollowees, 0)
+        #followeeHindex = self.cacuHOrder(self.fao.getFollowees, 0)
         #print followeeHindex
 
         # # followers after shilling attack
-        #print 'the coreness of user\'s followers after shilling attack '
-        shillingFollowerHindex = self.cacuHOrder(self.sao.getFollowers, 0)
+        print 'the coreness of user\'s followers after shilling attack '
+        shillingFollowerDegree = self.cacuHOrder(self.sao.getFollowers, 0)
+        shillingFollowerHindex = self.cacuHOrder(self.sao.getFollowers, 1)
+        shillingFollowerCoreness = self.cacuHOrder(self.sao.getFollowers, float('inf'))
 
         # # followees after shilling attack
         #print 'the coreness of user\'s followees after shilling attack'
-        shillingFolloweeHindex = self.cacuHOrder(self.sao.getFollowees, 0)
+        shillingFolloweeDegree = self.cacuHOrder(self.sao.getFollowees, 0)
+        shillingFolloweeHindex = self.cacuHOrder(self.sao.getFollowees, 1)
+        shillingFolloweeCoreness = self.cacuHOrder(self.sao.getFollowees, float('inf'))
         # #print sorted(shillingFolloweeHindex.items(), key=lambda i: i[1], reverse=True)
 
         # # compare the changes of followers
         #print 'the changes of followers'
-        self.followerChanges = self.cacuChanges(shillingFollowerHindex, followerHindex)
+        #self.followerChanges = self.cacuChanges(shillingFollowerHindex, followerHindex)
         #print self.followerChanges
 
         # # compare the changes of followees
         #print 'the changes of followees '
-        self.followeeChanges = self.cacuChanges(shillingFolloweeHindex, followeeHindex)
+        #self.followeeChanges = self.cacuChanges(shillingFolloweeHindex, followeeHindex)
         #print self.followeeChanges
         # #print followerChanges
         # #print followeeChanges
@@ -185,15 +190,21 @@ class Hindex(SSDetection):
 
         # preparing examples
         for user in self.dao.trainingSet_u:
-            self.training.append([followerHindex[user], followeeHindex[user],
-                                  shillingFollowerHindex[user], shillingFolloweeHindex[user],
-                                  self.followerChanges[user], self.followeeChanges[user]])
+            # self.training.append([followerHindex[user], followeeHindex[user],
+            #                       shillingFollowerHindex[user], shillingFolloweeHindex[user],
+            #                       self.followerChanges[user], self.followeeChanges[user]])
+            self.training.append([shillingFollowerDegree[user], shillingFollowerHindex[user],
+                                  shillingFollowerCoreness[user],shillingFolloweeDegree[user],
+                                  shillingFolloweeHindex[user],shillingFolloweeCoreness[user]])
             self.trainingLabels.append(self.labels[user])
 
         for user in self.dao.testSet_u:
-            self.test.append([followerHindex[user], followeeHindex[user],
-                                  shillingFollowerHindex[user], shillingFolloweeHindex[user],
-                                  self.followerChanges[user], self.followeeChanges[user]])
+            # self.test.append([followerHindex[user], followeeHindex[user],
+            #                       shillingFollowerHindex[user], shillingFolloweeHindex[user],
+            #                       self.followerChanges[user], self.followeeChanges[user]])
+            self.test.append([shillingFollowerDegree[user], shillingFollowerHindex[user],
+                                  shillingFollowerCoreness[user], shillingFolloweeDegree[user],
+                                  shillingFolloweeHindex[user], shillingFolloweeCoreness[user]])
             self.testLabels.append(self.labels[user])
 
 
@@ -234,10 +245,15 @@ class Hindex(SSDetection):
         # return self.predLabels
 
         # 有监督的方法
-        classifier = DecisionTreeClassifier(criterion='entropy')
-        classifier.fit(self.training, self.trainingLabels)
-        pred_labels = classifier.predict(self.test)
-        print 'Decision Tree:'
+        # classifier = DecisionTreeClassifier(criterion='entropy')
+        # classifier.fit(self.training, self.trainingLabels)
+        # pred_labels = classifier.predict(self.test)
+        # print 'Decision Tree:'
+        # return pred_labels
+
+        clfRF = RandomForestClassifier(n_estimators=10)
+        clfRF.fit(self.training, self.trainingLabels)
+        pred_labels = clfRF.predict(self.test)
         return pred_labels
 
 
