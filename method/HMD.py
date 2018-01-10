@@ -11,6 +11,7 @@ import random
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
+
 import gensim.models.word2vec as w2v
 
 
@@ -29,6 +30,8 @@ class HMD(SDetection):
         self.epoch = int(options['-ep'])
         self.rate = float(options['-r'])
         self.neg = int(options['-neg'])
+        self.ratingClass = int(options['-rc'])
+        self.degreeClass = int(options['-dc'])
         regular = config.LineConfig(self.config['reg.lambda'])
         self.regU, self.regI, self.regR, self.regW = float(regular['-u']), float(regular['-i']),\
                                                      float(regular['-R']), float(regular['-W'])
@@ -137,18 +140,6 @@ class HMD(SDetection):
             self.ISUDict[item] = scoreUDict
         return self.ISUDict
 
-    # 全局平均分字典 {item:meanRating} -->self.dao.itemMeans
-    # 用户平均分字典 {user：meanRating} -->self.dao.userMeans
-    # 平均分分为N级，建立分级字典{1级:{item1},... N级:{item}}
-
-    # 全局流行度字典 {item：ratingCount}
-    # 用户流行度字典 {user：ratingCount}
-    # 流行度分为M级，建立分级字典{1级:{item},...M级:{item}}
-
-    #路径：user1-item1-item流行度级数-同级item2-给item2评过分的user2
-    #路径：user1-item1-itemMean-itemMean级数-同级item2-给item2评过分的user2
-    #路径：user1-userMean-userMean级数-同级userMean-user2
-    #路径：user1-ratingCont-ratingCount级数-同级userCount-user2
 
 
     def pickNeighbor(self, user, UODict, OUDict):
@@ -242,7 +233,7 @@ class HMD(SDetection):
         p5 = 'UIPU'
         #找到与用户A对产品a评分相同的用户B
         p6 = 'US'
-        mPaths = [p1,p5,p6]
+        mPaths = [p1]
 
         print 'Generating random meta-path random walks...'
         self.walks = []
@@ -341,7 +332,7 @@ class HMD(SDetection):
         #             self.G[i] += self.rate * (error * p - self.regI * q)
 
         print 'Generating user embedding...'
-        model = w2v.Word2Vec(self.walks, size=self.walkDim, window=6, min_count=0, iter=3)
+        model = w2v.Word2Vec(self.walks, sg=1, size=self.walkDim, window=4, min_count=0, iter=5)
 
         errorNumber = 0
         for user in self.dao.all_User:
@@ -364,6 +355,26 @@ class HMD(SDetection):
     def initModel(self):
         self.feature()
         self.ISU()
+
+        # 全局平均分字典 {item:meanRating} -->self.dao.itemMeans
+        # 用户平均分字典 {user：meanRating} -->self.dao.userMeans
+        # 平均分分为N级，建立分级字典{1级:{item1},... p级:{item}}
+        # self.ratingDict = {}
+        # ItemRatingDiff = max(self.dao.itemMeans.values()) - min(self.dao.itemMeans.values())
+        # UserRatingDiff = max(self.dao.userMeans.valuse()) - min(self.dao.userMeans.values())
+
+
+        # 全局流行度字典 {item：ratingCount}
+        # 用户流行度字典 {user：ratingCount}
+        # 流行度分为M级，建立分级字典{1级:{item},...q级:{item}}
+
+        # 路径：user1-item1-item流行度级数-同级item2-给item2评过分的user2
+        # 路径：user1-item1-itemMean-itemMean级数-同级item2-给item2评过分的user2
+        # 路径：user1-userMean-userMean级数-同级userMean-user2
+        # 路径：user1-ratingCont-ratingCount级数-同级userCount-user2
+
+
+
         self.mPath_rWalk()
         # # 训练用户嵌入向量
 
