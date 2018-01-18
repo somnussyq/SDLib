@@ -18,9 +18,9 @@ class Hindex(SSDetection):
 
     def readConfiguration(self):
         super(Hindex, self).readConfiguration()
-        # 注入攻击前的用户关系
-        userRelation = FileIO.loadRelationship(self.config, self.config['shillingBefore'])
-        self.fao = SocialDAO(self.config, userRelation)
+        # # 注入攻击前的用户关系
+        # userRelation = FileIO.loadRelationship(self.config, self.config['shillingBefore'])
+        # self.fao = SocialDAO(self.config, userRelation)
 
         options = config.LineConfig(self.config['Hindex'])
         self.ratio = float(options['-r'])
@@ -28,10 +28,44 @@ class Hindex(SSDetection):
 
 
     # 数据说明
-    #self.fao: 原数据集用户关系
+    #self.fao: 原数据集用户关系 // 真实环境中没有该数据集
     #self.sao: 攻击之后用户关系
     #self.dao.user: 训练集{用户id：用户序号}
     #self.dao.all_user: 训练+测试集{用户id：用户序号}
+
+    # 计算k-truss
+    def edgeKtruss(self):
+        #self.Ktruss ==> {user1：{user2:triangleCount, user3:triangleCount }}
+        self.Ktruss = copy.deepcopy(self.sao.undirect)
+        #print self.Ktruss
+
+        # 节点的邻居用集合保存
+        self.ktrussSet = {}
+        for user, neighbor in self.Ktruss.items():
+            if not self.ktrussSet.has_key(user):
+                self.ktrussSet[user] = set(neighbor.keys())
+
+        for user, neighbor in self.Ktruss.items():
+            for friend, weight in neighbor.items():
+                self.Ktruss[user][friend]= len(self.ktrussSet[user] & self.ktrussSet[friend])
+        #print self.Ktruss
+
+        # 计算节点的Ktruss： 与之相连边所在三角形的平均值
+        self.userKtruss = {}
+        for user1 in self.dao.all_User:
+            tot = 0
+            try:
+                for user2, weight in self.Ktruss[user1].items():
+                    tot += weight
+                count = len(self.Ktruss[user1])
+                # round(a,4) ==> 对a保留4位小数
+                self.userKtruss[user1] = round(tot*1.0/count,4)
+            except(KeyError):
+                self.userKtruss[user1] = 0
+        #print self.userKtruss
+        return self.userKtruss
+
+
 
     # 计算Hindex
     # citations 在Hindex里表示引用关系
@@ -140,6 +174,8 @@ class Hindex(SSDetection):
 
 
     def buildModel(self):
+        print 'caculating the k-truss...'
+        self.edgeKtruss()
         #print 'trainingSet'
         # followers before shilling attack
         #print 'the coreness of user\'s followers before shilling attack'
@@ -195,7 +231,8 @@ class Hindex(SSDetection):
             #                       self.followerChanges[user], self.followeeChanges[user]])
             self.training.append([shillingFollowerDegree[user], shillingFollowerHindex[user],
                                   shillingFollowerCoreness[user],shillingFolloweeDegree[user],
-                                  shillingFolloweeHindex[user],shillingFolloweeCoreness[user]])
+                                  shillingFolloweeHindex[user],shillingFolloweeCoreness[user],
+                                  self.userKtruss[user]])
             self.trainingLabels.append(self.labels[user])
 
         for user in self.dao.testSet_u:
@@ -204,7 +241,8 @@ class Hindex(SSDetection):
             #                       self.followerChanges[user], self.followeeChanges[user]])
             self.test.append([shillingFollowerDegree[user], shillingFollowerHindex[user],
                                   shillingFollowerCoreness[user], shillingFolloweeDegree[user],
-                                  shillingFolloweeHindex[user], shillingFolloweeCoreness[user]])
+                                  shillingFolloweeHindex[user], shillingFolloweeCoreness[user],
+                              self.userKtruss[user]])
             self.testLabels.append(self.labels[user])
 
 
@@ -245,16 +283,16 @@ class Hindex(SSDetection):
         # return self.predLabels
 
         # 有监督的方法
-        # classifier = DecisionTreeClassifier(criterion='entropy')
-        # classifier.fit(self.training, self.trainingLabels)
-        # pred_labels = classifier.predict(self.test)
-        # print 'Decision Tree:'
-        # return pred_labels
-
-        clfRF = RandomForestClassifier(n_estimators=10)
-        clfRF.fit(self.training, self.trainingLabels)
-        pred_labels = clfRF.predict(self.test)
+        classifier = DecisionTreeClassifier(criterion='entropy')
+        classifier.fit(self.training, self.trainingLabels)
+        pred_labels = classifier.predict(self.test)
+        print 'Decision Tree:'
         return pred_labels
+        #
+        # clfRF = RandomForestClassifier(n_estimators=10)
+        # clfRF.fit(self.training, self.trainingLabels)
+        # pred_labels = clfRF.predict(self.test)
+        # return pred_labels
 
 
 

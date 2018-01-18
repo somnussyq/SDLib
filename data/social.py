@@ -12,6 +12,7 @@ class SocialDAO(object):
         self.relation = relation
         self.followees = {}
         self.followers = {}
+        self.undirect = {}
         self.trustMatrix = self.__generateSet()
 
     def __generateSet(self):
@@ -25,6 +26,13 @@ class SocialDAO(object):
             if not self.followers.has_key(userId2):
                 self.followers[userId2] = {}
             self.followers[userId2][userId1] = weight
+            # add undirect relations to dict
+            if not self.undirect.has_key(userId1):
+                self.undirect[userId1] = {}
+            self.undirect[userId1][userId2] = weight
+            if not self.undirect.has_key(userId2):
+                self.undirect[userId2] = {}
+            self.undirect[userId2][userId1] = weight
             # order the user
             if not self.user.has_key(userId1):
                 self.user[userId1] = len(self.user)
