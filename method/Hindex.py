@@ -26,7 +26,6 @@ class Hindex(SSDetection):
         self.ratio = float(options['-r'])
 
 
-
     # 数据说明
     #self.fao: 原数据集用户关系 // 真实环境中没有该数据集
     #self.sao: 攻击之后用户关系
@@ -172,10 +171,46 @@ class Hindex(SSDetection):
         # #print sorted(crossEntropy.items(), key=lambda i: i[1], reverse=True)
         # return sorted(hChanges.items(), key=lambda i: i[1] reverse=sortType)
 
+    def degreeSAD(self):
+        self.MUD = {}
+        self.RUD = {}
+        self.QUD = {}
+        # computing MUD,RUD,QUD for training set
+        sList = sorted(self.dao.trainingSet_i.iteritems(), key=lambda d: len(d[1]), reverse=True)
+        maxLength = len(sList[0][1])
+        for user in self.dao.trainingSet_u:
+            self.MUD[user] = 0
+            for item in self.dao.trainingSet_u[user]:
+                self.MUD[user] += len(self.dao.trainingSet_i[item])  # / float(maxLength)
+            self.MUD[user] / float(len(self.dao.trainingSet_u[user]))
+            lengthList = [len(self.dao.trainingSet_i[item]) for item in self.dao.trainingSet_u[user]]
+            lengthList.sort(reverse=True)
+            self.RUD[user] = lengthList[0] - lengthList[-1]
+
+            lengthList = [len(self.dao.trainingSet_i[item]) for item in self.dao.trainingSet_u[user]]
+            lengthList.sort()
+            self.QUD[user] = lengthList[int((len(lengthList) - 1) / 4.0)]
+
+        # computing MUD,RUD,QUD for test set
+        for user in self.dao.testSet_u:
+            self.MUD[user] = 0
+            for item in self.dao.testSet_u[user]:
+                self.MUD[user] += len(self.dao.trainingSet_i[item])  # / float(maxLength)
+        for user in self.dao.testSet_u:
+            lengthList = [len(self.dao.trainingSet_i[item]) for item in self.dao.testSet_u[user]]
+            lengthList.sort(reverse=True)
+            self.RUD[user] = lengthList[0] - lengthList[-1]
+        for user in self.dao.testSet_u:
+            lengthList = [len(self.dao.trainingSet_i[item]) for item in self.dao.testSet_u[user]]
+            lengthList.sort()
+            self.QUD[user] = lengthList[int((len(lengthList) - 1) / 4.0)]
+
+
 
     def buildModel(self):
         print 'caculating the k-truss...'
         self.edgeKtruss()
+        self.degreeSAD()
         #print 'trainingSet'
         # followers before shilling attack
         #print 'the coreness of user\'s followers before shilling attack'
@@ -224,6 +259,9 @@ class Hindex(SSDetection):
         # print len(self.dao.user)
         # print len(self.sao.user)
 
+
+
+
         # preparing examples
         for user in self.dao.trainingSet_u:
             # self.training.append([followerHindex[user], followeeHindex[user],
@@ -232,7 +270,7 @@ class Hindex(SSDetection):
             self.training.append([shillingFollowerDegree[user], shillingFollowerHindex[user],
                                   shillingFollowerCoreness[user],shillingFolloweeDegree[user],
                                   shillingFolloweeHindex[user],shillingFolloweeCoreness[user],
-                                  self.userKtruss[user]])
+                                  self.userKtruss[user],self.MUD[user], self.RUD[user], self.QUD[user]])
             self.trainingLabels.append(self.labels[user])
 
         for user in self.dao.testSet_u:
@@ -242,7 +280,7 @@ class Hindex(SSDetection):
             self.test.append([shillingFollowerDegree[user], shillingFollowerHindex[user],
                                   shillingFollowerCoreness[user], shillingFolloweeDegree[user],
                                   shillingFolloweeHindex[user], shillingFolloweeCoreness[user],
-                              self.userKtruss[user]])
+                              self.userKtruss[user],self.MUD[user], self.RUD[user], self.QUD[user]])
             self.testLabels.append(self.labels[user])
 
 
@@ -283,16 +321,17 @@ class Hindex(SSDetection):
         # return self.predLabels
 
         # 有监督的方法
-        classifier = DecisionTreeClassifier(criterion='entropy')
-        classifier.fit(self.training, self.trainingLabels)
-        pred_labels = classifier.predict(self.test)
-        print 'Decision Tree:'
-        return pred_labels
-        #
-        # clfRF = RandomForestClassifier(n_estimators=10)
-        # clfRF.fit(self.training, self.trainingLabels)
-        # pred_labels = clfRF.predict(self.test)
+        # classifier = DecisionTreeClassifier(criterion='entropy')
+        # classifier.fit(self.training, self.trainingLabels)
+        # pred_labels = classifier.predict(self.test)
+        # print 'Decision Tree:'
         # return pred_labels
+        #
+        clfRF = RandomForestClassifier(n_estimators=10)
+        clfRF.fit(self.training, self.trainingLabels)
+        pred_labels = clfRF.predict(self.test)
+        print 'randomForest'
+        return pred_labels
 
 
 
